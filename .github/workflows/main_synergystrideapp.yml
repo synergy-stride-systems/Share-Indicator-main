@@ -50,26 +50,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
+    
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: python-app
       
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_471D4BA68FF24EC99E8D8FFBF2A125F0 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EABB9B4AC0624432B00665FAA978F245 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_1C7909DF1C7D4EA0982ED46AD2F2562D }}
-
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'SynergyStrideApp'
-          
+          slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_C241DC31DD1F4A7393DB82D771D830F2 }}
