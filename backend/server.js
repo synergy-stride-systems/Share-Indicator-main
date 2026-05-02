@@ -21,9 +21,12 @@ async function start() {
 
   const app = express();
 
+  const frontendOrigin = process.env.FRONTEND_URL || "http://localhost:3000";
+
   app.use(
     cors({
-      origin: "http://localhost:3000",
+      origin: frontendOrigin,
+      credentials: true,
     })
   );
 
@@ -37,8 +40,8 @@ async function start() {
 
   app.use("/api/users", userRouter);
   app.use("/api/scanner", scannerRoutes);
-  app.use("/api/strategy", strategyRoutes); 
-  const PORT = process.env.SERVER_PORT || 4000;
+  app.use("/api/strategy", strategyRoutes);
+  const PORT = process.env.PORT || process.env.SERVER_PORT || 4000;
   app.listen(PORT, () => {
     console.log(`Server is listening on port: ${PORT}`);
   });
