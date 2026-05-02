@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Header from "../../components/Header";
+import Footer from "../../components/Footer";
 
 const VARIABLES = [
   { value: "curr_open",  label: "Curr Open"  },
@@ -121,6 +123,8 @@ export default function ConfigPage() {
   const activeConditions = conditions.filter(c => c.enabled);
 
   return (
+    <>
+      <Header />
     <div className="min-h-screen bg-gray-950 text-gray-100 p-8 font-mono">
 
       {/* Header */}
@@ -284,5 +288,7 @@ export default function ConfigPage() {
         </div>
       </div>
     </div>
+    <Footer />
+    </>
   );
 }

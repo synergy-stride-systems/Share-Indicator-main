@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Header from "../../components/Header";
+import Footer from "../../components/Footer";
 
 interface StockResult {
   symbol: string;
@@ -341,6 +343,8 @@ export default function Dashboard() {
     : 0;
 
   return (
+    <>
+      <Header />
     <div className="min-h-screen bg-gray-950 text-gray-100 p-8 font-mono">
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
@@ -468,5 +472,7 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+    <Footer />
+    </>
   );
 }
