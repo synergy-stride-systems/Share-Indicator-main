@@ -10,6 +10,11 @@ import path from "path";
 
 config();
 
+if (!process.env.JWT_SECRET) {
+  console.error("JWT_SECRET is required in environment variables.");
+  process.exit(1);
+}
+
 async function start() {
   try {
     await AppDataSource.initialize();

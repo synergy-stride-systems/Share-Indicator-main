@@ -13,8 +13,16 @@ import axios from "axios";
 
 export const runScanner = async (req, res) => {
   try {
-    // ✅ Get conditions from frontend
-    const { conditions } = req.body;
+    // ✅ Get conditions from frontend (support GET query or POST body)
+    let conditions = req.body?.conditions || req.query?.conditions || [];
+
+    if (typeof conditions === "string") {
+      try {
+        conditions = JSON.parse(conditions);
+      } catch (err) {
+        conditions = [];
+      }
+    }
 
     console.log("Received from frontend:", conditions);
 
@@ -25,9 +33,12 @@ export const runScanner = async (req, res) => {
     /*await axios.post("http://127.0.0.1:5000/scan/start", {
   conditions
 }*/
-const response = await axios.get(
-  `http://localhost:5000/scan?conditions=${encodeURIComponent(JSON.stringify(conditions))}`
-);
+    const scannerBaseUrl =
+      (process.env.SCAN_SERVICE_URL || "http://localhost:5000").replace(/\/+$/, "");
+
+    const response = await axios.get(
+      `${scannerBaseUrl}/scan?conditions=${encodeURIComponent(JSON.stringify(conditions))}`
+    );
 
 
 
