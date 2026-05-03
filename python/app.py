@@ -11,10 +11,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 
-cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
-if isinstance(cors_origins, str):
-    cors_origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
-CORS(app, origins=cors_origins)
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",
+            "https://synergyapp-frontend-f9bxarh2ehbycuhh.canadacentral-01.azurewebsites.net"
+        ]
+    }
+})
+
+
 
 # Load symbols
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -287,7 +293,4 @@ def debug(symbol):
 # =========================
 
 if __name__ == "__main__":
-    host = os.environ.get("HOST", "0.0.0.0")
-    port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("FLASK_DEBUG", "false").lower() in ("1", "true", "yes")
-    app.run(debug=debug, host=host, port=port)
+    app.run(debug=True, port=5000)
