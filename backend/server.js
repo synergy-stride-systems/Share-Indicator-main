@@ -30,13 +30,20 @@ async function start() {
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
+        const isAllowed =
+          !origin ||
+          allowedOrigins.includes(origin) ||
+          origin.endsWith(".azurewebsites.net");
+
+        if (isAllowed) {
           callback(null, true);
         } else {
+          console.warn("Blocked CORS origin:", origin);
           callback(new Error("Not allowed by CORS"));
         }
       },
       credentials: true,
+      optionsSuccessStatus: 200,
     })
   );
 
