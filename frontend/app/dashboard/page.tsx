@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
+import { apiUrl, scanUrl } from "../../lib/api";
 
 interface StockResult {
   symbol: string;
@@ -93,7 +94,7 @@ export default function Dashboard() {
     }
 
     // ✅ get conditions from backend
-    const res = await fetch(`http://localhost:4000/api/strategy/get/${userId}`);
+    const res = await fetch(apiUrl(`/api/strategy/get/${userId}`));
     const data = await res.json();
 
     const conditions = (data.conditions || []).filter((c: any) => c.enabled);
@@ -102,7 +103,7 @@ export default function Dashboard() {
 
     // ✅ ONLY THIS (no POST, no /stream)
     const es = new EventSource(
-      `http://localhost:5000/scan?conditions=${encodeURIComponent(JSON.stringify(conditions))}`
+      `${scanUrl(`/scan?conditions=${encodeURIComponent(JSON.stringify(conditions))}`)}`
     );
 
     eventSourceRef.current = es;
@@ -327,7 +328,7 @@ export default function Dashboard() {
   };*/
 
   const stopScan = async () => {
-    await fetch("http://localhost:4000/scan/stop", { method: "POST" });
+    await fetch(apiUrl("/scan/stop"), { method: "POST" });
     eventSourceRef.current?.close();
     setScanning(false);
     addLog("Scan stopped by user.");

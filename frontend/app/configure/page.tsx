@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
+import { apiUrl } from "../../lib/api";
 
 const VARIABLES = [
   { value: "curr_open",  label: "Curr Open"  },
@@ -57,7 +58,7 @@ export default function ConfigPage() {
   useEffect(() => {
   const userId = localStorage.getItem("userId");
 
-  fetch(`http://localhost:4000/api/strategy/get/${userId}`)
+  fetch(apiUrl(`/api/strategy/get/${userId}`))
     .then(res => res.json())
     .then(data => {
       if (data.conditions?.length) {
@@ -105,7 +106,7 @@ export default function ConfigPage() {
   const saveConditions = async () => {
   const userId = localStorage.getItem("userId");
 
-  await fetch("http://localhost:4000/api/strategy/save", {
+  await fetch(apiUrl("/api/strategy/save"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
