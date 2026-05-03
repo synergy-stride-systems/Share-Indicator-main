@@ -33,8 +33,13 @@ export const runScanner = async (req, res) => {
     /*await axios.post("http://127.0.0.1:5000/scan/start", {
   conditions
 }*/
+    const defaultScannerUrl =
+      process.env.NODE_ENV === "production"
+        ? "https://synergyapp-scanner-fqfxefe2gfeyc5dt.canadacentral-01.azurewebsites.net"
+        : "http://localhost:5000";
+
     const scannerBaseUrl =
-      (process.env.SCAN_SERVICE_URL || "http://localhost:5000").replace(/\/+$/, "");
+      (process.env.SCAN_SERVICE_URL || defaultScannerUrl).replace(/\/\/+$/, "");
 
     const response = await axios.get(
       `${scannerBaseUrl}/scan?conditions=${encodeURIComponent(JSON.stringify(conditions))}`
