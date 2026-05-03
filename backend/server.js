@@ -21,11 +21,21 @@ async function start() {
 
   const app = express();
 
-  const frontendOrigin = process.env.FRONTEND_URL || "http://localhost:3000";
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_URL_2,
+    "http://localhost:3000",
+  ].filter(Boolean);
 
   app.use(
     cors({
-      origin: frontendOrigin,
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error("Not allowed by CORS"));
+        }
+      },
       credentials: true,
     })
   );
