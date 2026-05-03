@@ -10,6 +10,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      SCM_DO_BUILD_DURING_DEPLOYMENT: true
     steps:
       - uses: actions/checkout@v4
 
