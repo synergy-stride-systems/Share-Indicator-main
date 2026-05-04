@@ -109,7 +109,8 @@ export default function Dashboard() {
     eventSourceRef.current = es;
 
     es.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
+      const safeData = e.data.replace(/\bNaN\b/g, "null");
+      const msg = JSON.parse(safeData);
 
       if (msg.type === "progress") {
         setCurrentSymbol(msg.symbol || "");
