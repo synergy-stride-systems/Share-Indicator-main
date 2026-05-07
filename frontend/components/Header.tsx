@@ -18,7 +18,7 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-gray-900 border-b border-gray-800 top-0 w-full sticky z-50">
+    <header className="bg-white border-b border-gray-300 top-0 w-full sticky z-50">
       <div className="max-w-full flex items-center justify-between px-4">
 
         {/* Brand */}
@@ -31,7 +31,8 @@ export default function Header() {
             <Image src="/logo.png" alt="Synergy Stride" width={80} height={80} className="hidden sm:block" />
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-white font-bold tracking-widest uppercase text-sm select-none">
+            <span className=" font-bold tracking-widest uppercase text-sm select-none"
+            style={{ background: "linear-gradient(90deg, #cc1f00, #ff6a00)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
               Synergy Stride
             </span>
             <span className="hidden sm:block text-gray-500 text-xs tracking-widest uppercase border-l border-gray-700 pl-3 select-none">
@@ -67,7 +68,7 @@ export default function Header() {
               <button
                 key={href}
                 onClick={() => router.push(href)}
-                className="text-xs text-gray-400 hover:text-gray-200 tracking-widest uppercase transition-colors"
+                className="text-sm text-gray-500 hover:text-gray-900  uppercase transition-colors"
               >
                 {label}
               </button>

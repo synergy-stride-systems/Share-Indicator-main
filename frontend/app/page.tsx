@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080b0f] flex items-center justify-center font-mono relative overflow-hidden">
+    <div className="min-h-screen bg-white flex items-center justify-center font-mono relative overflow-hidden">
 
       {/* Grid background */}
       <div
@@ -63,7 +64,7 @@ export default function LoginPage() {
 
       {/* Card */}
       <div
-        className={`relative w-[380px] bg-[#0d1117] border border-[#1e2d24] px-10 py-12 transition-all duration-500 ${
+        className={`relative w-[380px] bg-gray-100 border border-[#1e2d24] px-10 py-12 transition-all duration-500 ${
           mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
         }`}
       >
@@ -76,11 +77,17 @@ export default function LoginPage() {
         />
 
         {/* Header */}
-        <p className="text-[10px] tracking-[0.2em] uppercase text-emerald-500 opacity-80 mb-7">
+        <div className="flex flex-row gap-2 items-center mb-2">
+          <div className="flex items-center" style={{ gap: "1px" }}>
+            <Image src="/logo.png" alt="Synergy Stride" width={100} height={100} className="hidden sm:block" />
+          </div>
+        
+        <p className="text-base tracking-[0.2em] uppercase text-black opacity-80 mb-3">
           F&amp;O Scanner
         </p>
-        <h1 className="text-[22px] font-medium text-[#e6edf3] tracking-tight mb-1">
-          Access Terminal
+        </div>
+        <h1 className="text-[22px] font-medium text-black tracking-tight mb-1">
+          Welcome!
         </h1>
         <p className="text-[13px] text-[#4a5568] font-light mb-9">
           Sign in to your account
@@ -154,11 +161,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Footer */}
-        <div className="mt-7 pt-5 border-t border-[#1a2332] flex justify-between text-[10px] text-[#2d3748] tracking-widest">
-          <span>SECURE CONNECTION</span>
-          <span>v1.0.0</span>
-        </div>
       </div>
     </div>
   );
