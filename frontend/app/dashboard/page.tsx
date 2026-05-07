@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
+import { apiUrl, scanUrl } from "../../lib/api";
 
 interface StockResult {
   symbol: string;
@@ -74,6 +75,94 @@ export default function Dashboard() {
     setLog(prev => [...prev, msg]);
 
   const startScan = async () => {
+  try {
+    setResults([]);
+    setSummary(null);
+    setLog([]);
+    setProgress({ current: 0, total: 0 });
+    setScanning(true);
+
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const userId = user.id;
+
+    if (!userId) {
+      alert("User not found");
+      setScanning(false);
+      return;
+    }
+
+    // Get conditions from backend
+    const res = await fetch(apiUrl(`/api/strategy/get/${userId}`));
+    const data = await res.json();
+
+    const conditions = (data.conditions || []).filter(
+      (c: any) => c.enabled
+    );
+
+    addLog(`Starting scan with ${conditions.length} condition(s)...`);
+
+    // Start SSE connection
+    const es = new EventSource(
+      scanUrl(
+        `/scan?conditions=${encodeURIComponent(
+          JSON.stringify(conditions)
+        )}`
+      )
+    );
+
+    eventSourceRef.current = es;
+
+    es.onmessage = (e) => {
+      const safeData = e.data.replace(/\bNaN\b/g, "null");
+      const msg = JSON.parse(safeData);
+
+      if (msg.type === "progress") {
+        setCurrentSymbol(msg.symbol || "");
+        setProgress({
+          current: msg.current,
+          total: msg.total,
+        });
+
+        addLog(`Scanning (${msg.current}/${msg.total})`);
+      }
+
+      if (msg.type === "result") {
+        setResults((prev) =>
+          [...prev, msg.data].sort(
+            (a, b) => b.percent_gain - a.percent_gain
+          )
+        );
+
+        addLog(
+          `✓ BUY: ${msg.data.symbol} +${msg.data.percent_gain}%`
+        );
+      }
+
+      if (msg.type === "summary") {
+        setSummary(msg.data);
+      }
+
+      if (msg.type === "stop") {
+        setScanning(false);
+        es.close();
+        addLog("Scan complete");
+      }
+    };
+
+    es.onerror = () => {
+      addLog("Connection error");
+      setScanning(false);
+      es.close();
+    };
+
+  } catch (err) {
+    console.error(err);
+    setScanning(false);
+    addLog("Error starting scan");
+  }
+};
+
+  {/*const startScan = async () => {
     try {
       setResults([]);
       setSummary(null);
@@ -84,9 +173,34 @@ export default function Dashboard() {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
       const userId = user.id;
 
-      if (!userId) {
-        alert("User not found");
-        return;
+    if (!userId) {
+      alert("User not found");
+      return;
+    }
+
+    // ✅ get conditions from backend
+    const res = await fetch(apiUrl(`/api/strategy/get/${userId}`));
+    const data = await res.json();
+
+    const conditions = (data.conditions || []).filter((c: any) => c.enabled);
+
+    addLog(`Starting scan with ${conditions.length} condition(s)...`);
+
+    // ✅ ONLY THIS (no POST, no /stream)
+    const es = new EventSource(
+      `${scanUrl(`/scan?conditions=${encodeURIComponent(JSON.stringify(conditions))}`)}`
+    );
+
+    eventSourceRef.current = es;
+
+    es.onmessage = (e) => {
+      const safeData = e.data.replace(/\bNaN\b/g, "null");
+      const msg = JSON.parse(safeData);
+
+      if (msg.type === "progress") {
+        setCurrentSymbol(msg.symbol || "");
+        setProgress({ current: msg.current, total: msg.total });
+        addLog(`Scanning (${msg.current}/${msg.total})`);
       }
 
       const res = await fetch(`http://localhost:4000/api/strategy/get/${userId}`);
@@ -136,10 +250,10 @@ export default function Dashboard() {
       setScanning(false);
       addLog("Error starting scan");
     }
-  };
+  };*/}
 
   const stopScan = async () => {
-    await fetch("http://localhost:4000/scan/stop", { method: "POST" });
+    await fetch(apiUrl("/scan/stop"), { method: "POST" });
     eventSourceRef.current?.close();
     setScanning(false);
     addLog("Scan stopped by user.");

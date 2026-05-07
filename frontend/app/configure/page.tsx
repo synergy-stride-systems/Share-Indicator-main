@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
+import { apiUrl } from "../../lib/api";
 
 const VARIABLES = [
   { value: "curr_open",  label: "Curr Open"  },
@@ -50,14 +51,14 @@ export default function ConfigPage() {
   useEffect(() => {
     const userId = localStorage.getItem("userId");
 
-    fetch(`http://localhost:4000/api/strategy/get/${userId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.conditions?.length) {
-          setConditions(data.conditions);
-        }
-      });
-  }, []);
+  fetch(apiUrl(`/api/strategy/get/${userId}`))
+    .then(res => res.json())
+    .then(data => {
+      if (data.conditions?.length) {
+        setConditions(data.conditions);
+      }
+    });
+}, []);
 
   const update = useCallback((id: number, field: keyof Condition, value: string | boolean) => {
     setConditions(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
@@ -92,16 +93,16 @@ export default function ConfigPage() {
   const saveConditions = async () => {
     const userId = localStorage.getItem("userId");
 
-    await fetch("http://localhost:4000/api/strategy/save", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        conditions,
-        userId
-      })
-    });
+  await fetch(apiUrl("/api/strategy/save"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      conditions,
+      userId
+    })
+  });
 
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);

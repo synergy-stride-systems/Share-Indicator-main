@@ -10,7 +10,17 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3000"])
+
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",
+            "https://synergyapp-frontend-f9bxarh2ehbycuhh.canadacentral-01.azurewebsites.net"
+        ]
+    }
+})
+
+
 
 # Load symbols
 base_dir = os.path.dirname(os.path.abspath(__file__))

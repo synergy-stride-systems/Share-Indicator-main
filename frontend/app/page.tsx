@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { apiUrl } from "../lib/api";
 import Image from "next/image";
 
 export default function LoginPage() {
@@ -28,7 +29,7 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:4000/api/users/login", {
+      const res = await fetch(apiUrl("/api/users/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

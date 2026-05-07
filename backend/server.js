@@ -10,6 +10,11 @@ import path from "path";
 
 config();
 
+if (!process.env.JWT_SECRET) {
+  console.error("JWT_SECRET is required in environment variables.");
+  process.exit(1);
+}
+
 async function start() {
   try {
     await AppDataSource.initialize();
@@ -21,12 +26,29 @@ async function start() {
 
   const app = express();
 
-  const frontendOrigin = process.env.FRONTEND_URL || "http://localhost:3000";
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_URL_2,
+    "http://localhost:3000",
+  ].filter(Boolean);
 
   app.use(
     cors({
-      origin: frontendOrigin,
+      origin: (origin, callback) => {
+        const isAllowed =
+          !origin ||
+          allowedOrigins.includes(origin) ||
+          origin.endsWith(".azurewebsites.net");
+
+        if (isAllowed) {
+          callback(null, true);
+        } else {
+          console.warn("Blocked CORS origin:", origin);
+          callback(new Error("Not allowed by CORS"));
+        }
+      },
       credentials: true,
+      optionsSuccessStatus: 200,
     })
   );
 
