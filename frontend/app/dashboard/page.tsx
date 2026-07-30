@@ -16,6 +16,7 @@ interface StockResult {
   volume: number;
   percent_gain: number;
   pe_ratio: number | null;
+  sentiment_score: number | null;
 }
 
 interface Summary {
@@ -53,6 +54,15 @@ function getActiveConditions(): Condition[] {
     // fall through to default
   }
   return DEFAULT_CONDITIONS.filter(c => c.enabled);
+}
+
+function sentimentLabel(score: number | null | undefined) {
+  if (score === null || score === undefined) {
+    return { text: "—", className: "text-gray-300" };
+  }
+  if (score > 0.05) return { text: `+${score.toFixed(2)}`, className: "text-emerald-600" };
+  if (score < -0.05) return { text: score.toFixed(2), className: "text-red-500" };
+  return { text: score.toFixed(2), className: "text-gray-400" };
 }
 
 export default function Dashboard() {
@@ -356,19 +366,24 @@ export default function Dashboard() {
                       <th className="text-right py-2 pr-4">% Gain</th>
                       <th className="text-right py-2 pr-4">Close</th>
                       <th className="text-right py-2 pr-4">Volume</th>
-                      <th className="text-right py-2">P/E</th>
+                      <th className="text-right py-2 pr-4">P/E</th>
+                      <th className="text-right py-2">Sentiment</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {results.map((r, i) => (
-                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-100 transition-colors">
-                        <td className="py-2 pr-4 text-gray-900 font-bold">{r.symbol}</td>
-                        <td className="py-2 pr-4 text-right text-emerald-600">+{r.percent_gain}%</td>
-                        <td className="py-2 pr-4 text-right text-gray-700">{r.curr_close}</td>
-                        <td className="py-2 pr-4 text-right text-gray-500">{r.volume?.toLocaleString()}</td>
-                        <td className="py-2 text-right text-gray-400">{r.pe_ratio ?? "—"}</td>
-                      </tr>
-                    ))}
+                    {results.map((r, i) => {
+                      const sentiment = sentimentLabel(r.sentiment_score);
+                      return (
+                        <tr key={i} className="border-b border-gray-100 hover:bg-gray-100 transition-colors">
+                          <td className="py-2 pr-4 text-gray-900 font-bold">{r.symbol}</td>
+                          <td className="py-2 pr-4 text-right text-emerald-600">+{r.percent_gain}%</td>
+                          <td className="py-2 pr-4 text-right text-gray-700">{r.curr_close}</td>
+                          <td className="py-2 pr-4 text-right text-gray-500">{r.volume?.toLocaleString()}</td>
+                          <td className="py-2 pr-4 text-right text-gray-400">{r.pe_ratio ?? "—"}</td>
+                          <td className={`py-2 text-right ${sentiment.className}`}>{sentiment.text}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

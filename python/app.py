@@ -6,8 +6,10 @@ import json
 import queue
 import threading
 import os
+import logging
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 app = Flask(__name__)
 
@@ -20,10 +22,27 @@ CORS(app, resources={
     }
 })
 
+_sentiment_analyzer = SentimentIntensityAnalyzer()
+
+# =========================
+# SENTIMENT LOGGING
+# =========================
+base_dir = os.path.dirname(os.path.abspath(__file__))
+_logs_dir = os.path.join(base_dir, "logs")
+os.makedirs(_logs_dir, exist_ok=True)
+
+sentiment_logger = logging.getLogger("sentiment")
+sentiment_logger.setLevel(logging.INFO)
+sentiment_logger.propagate = False  # don't also spam the root/console logger
+
+if not sentiment_logger.handlers:
+    _file_handler = logging.FileHandler(os.path.join(_logs_dir, "sentiment.log"), encoding="utf-8")
+    _file_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    sentiment_logger.addHandler(_file_handler)
+
 
 
 # Load symbols
-base_dir = os.path.dirname(os.path.abspath(__file__))
 file_path = os.path.join(base_dir, "fno_list.txt")
 
 with open(file_path, "r") as f:
@@ -38,7 +57,14 @@ MAX_WORKERS = 10
 
 def evaluate_condition(stock, cond):
     lhs = stock.get(cond["lhs"])
-    rhs = stock.get(cond["rhs"])
+
+    # rhs can be another stock field (string key) OR a literal number
+    # (e.g. {"lhs": "sentiment_score", "op": ">", "rhs": 0.2})
+    rhs_field = cond["rhs"]
+    if isinstance(rhs_field, (int, float)):
+        rhs = rhs_field
+    else:
+        rhs = stock.get(rhs_field)
 
     if lhs is None or rhs is None:
         return False
@@ -52,6 +78,50 @@ def evaluate_condition(stock, cond):
     elif op == "==": return lhs == rhs
 
     return False
+
+
+def conditions_reference(conditions, field_name):
+    """True if any condition reads `field_name` as lhs or rhs (as a variable,
+    not a literal number). Used to skip expensive lookups (like news
+    sentiment) for scans that don't actually filter on that field."""
+    for cond in conditions:
+        if cond.get("lhs") == field_name:
+            return True
+        if cond.get("rhs") == field_name:
+            return True
+    return False
+
+
+def get_sentiment_score(symbol):
+    """Average VADER compound sentiment (-1 to 1) over the stock's most
+    recent news headlines. Returns None if no news is available.
+    Logs the full headline-by-headline breakdown to logs/sentiment.log."""
+    try:
+        ticker = yf.Ticker(symbol)
+        news_items = ticker.news or []
+
+        headlines = []
+        for item in news_items[:10]:
+            title = item.get("title") or item.get("content", {}).get("title")
+            if title:
+                headlines.append(title)
+
+        if not headlines:
+            sentiment_logger.info(f"{symbol}: no headlines found, sentiment_score=None")
+            return None
+
+        scored = [(h, _sentiment_analyzer.polarity_scores(h)["compound"]) for h in headlines]
+        avg_score = round(sum(s for _, s in scored) / len(scored), 3)
+
+        sentiment_logger.info(f"{symbol}: {len(scored)} headline(s), avg={avg_score}")
+        for headline, score in scored:
+            sentiment_logger.info(f"  - \"{headline}\" ({score:+.3f})")
+
+        return avg_score
+    except Exception as e:
+        sentiment_logger.info(f"{symbol}: sentiment fetch failed - {e}")
+        print(f"Sentiment fetch failed for {symbol}: {e}")
+        return None
 
 
 def evaluate_conditions(stock, conditions):
@@ -106,6 +176,13 @@ def process_stock(symbol, conditions):
             "volume":     int(curr["Volume"]),
         }
 
+        # Only hit the news API when a condition actually filters on
+        # sentiment — keeps scans fast for strategies that don't use it.
+        sentiment_score = None
+        if conditions_reference(conditions, "sentiment_score"):
+            sentiment_score = get_sentiment_score(symbol)
+        stock_data["sentiment_score"] = sentiment_score
+
         if not evaluate_conditions(stock_data, conditions):
             return None
 
@@ -117,21 +194,27 @@ def process_stock(symbol, conditions):
         except Exception:
             pe_ratio = None
 
+        # Fetch sentiment for display even if it wasn't used as a filter,
+        # so the result table can always show it.
+        if sentiment_score is None:
+            sentiment_score = get_sentiment_score(symbol)
+
         percent_gain = (
             (stock_data["curr_close"] - stock_data["curr_open"])
             / stock_data["curr_open"]
         ) * 100
 
         return {
-            "symbol":       symbol,
-            "prev_close":   stock_data["prev_close"],
-            "prev_low":     stock_data["prev_low"],
-            "curr_open":    stock_data["curr_open"],
-            "curr_low":     stock_data["curr_low"],
-            "curr_close":   stock_data["curr_close"],
-            "volume":       stock_data["volume"],
-            "percent_gain": round(percent_gain, 2),
-            "pe_ratio":     pe_ratio,
+            "symbol":         symbol,
+            "prev_close":     stock_data["prev_close"],
+            "prev_low":       stock_data["prev_low"],
+            "curr_open":      stock_data["curr_open"],
+            "curr_low":       stock_data["curr_low"],
+            "curr_close":     stock_data["curr_close"],
+            "volume":         stock_data["volume"],
+            "percent_gain":   round(percent_gain, 2),
+            "pe_ratio":       pe_ratio,
+            "sentiment_score": sentiment_score,
         }
 
     except Exception as e:

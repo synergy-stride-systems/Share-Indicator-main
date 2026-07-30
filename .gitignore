@@ -5,3 +5,5 @@ build/
 backend/.env
 .env
 .env.*
+python/output/
+python/logs/

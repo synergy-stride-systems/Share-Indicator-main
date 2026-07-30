@@ -15,6 +15,7 @@ const VARIABLES = [
   { value: "prev_close", label: "Prev Close" },
   { value: "prev_low",   label: "Prev Low"   },
   { value: "prev_high",  label: "Prev High"  },
+  { value: "sentiment_score", label: "Sentiment score" },
 ];
 
 const OPERATORS = [
@@ -30,7 +31,7 @@ interface Condition {
   enabled: boolean;
   lhs: string;
   op: string;
-  rhs: string;
+  rhs: string | number;
   conn: "and" | "or";
 }
 
@@ -47,6 +48,9 @@ export default function ConfigPage() {
     DEFAULT_CONDITIONS.map(c => ({ ...c }))
   );
   const [saved, setSaved] = useState(false);
+  const [nlText, setNlText] = useState("");
+  const [nlLoading, setNlLoading] = useState(false);
+  const [nlError, setNlError] = useState<string | null>(null);
 
   useEffect(() => {
     const userId = localStorage.getItem("userId");
@@ -60,7 +64,7 @@ export default function ConfigPage() {
     });
 }, []);
 
-  const update = useCallback((id: number, field: keyof Condition, value: string | boolean) => {
+  const update = useCallback((id: number, field: keyof Condition, value: string | number | boolean) => {
     setConditions(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
     setSaved(false);
   }, []);
@@ -88,6 +92,39 @@ export default function ConfigPage() {
   const resetToDefault = () => {
     setConditions(DEFAULT_CONDITIONS.map(c => ({ ...c })));
     setSaved(false);
+  };
+
+  const generateFromText = async () => {
+    if (!nlText.trim()) return;
+
+    setNlLoading(true);
+    setNlError(null);
+
+    try {
+      const token = localStorage.getItem("token");
+
+      const res = await fetch(apiUrl("/api/strategy/parse-nl"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ text: nlText }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || `Request failed (${res.status})`);
+      }
+
+      setConditions(data.conditions);
+      setSaved(false);
+    } catch (err: any) {
+      setNlError(err.message || "Something went wrong");
+    } finally {
+      setNlLoading(false);
+    }
   };
 
   const saveConditions = async () => {
@@ -128,6 +165,35 @@ export default function ConfigPage() {
             Conditions joined by and / or — chain evaluates top to bottom.
           </p>
 
+          {/* Natural language input */}
+          <div className="bg-white border border-gray-200 rounded p-4 mb-6 shadow-sm">
+            <p className="text-sm text-gray-800 uppercase tracking-widest mb-3">
+              Describe your strategy
+            </p>
+            <textarea
+              value={nlText}
+              onChange={e => setNlText(e.target.value)}
+              placeholder='e.g. "buy when today&apos;s close is above yesterday&apos;s close and volume is over 1 million"'
+              rows={3}
+              className="w-full bg-gray-100 border border-gray-200 text-gray-800 text-sm rounded px-3 py-2 focus:outline-none focus:border-emerald-400 resize-none"
+            />
+            <div className="flex items-center gap-3 mt-3">
+              <button
+                onClick={generateFromText}
+                disabled={nlLoading || !nlText.trim()}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded transition-colors"
+              >
+                {nlLoading ? "Generating..." : "Generate conditions"}
+              </button>
+              <span className="text-xs text-gray-400">
+                Review the generated rows below before saving.
+              </span>
+            </div>
+            {nlError && (
+              <p className="text-xs text-red-500 mt-2">{nlError}</p>
+            )}
+          </div>
+
           {/* Condition rows */}
           <div className="mb-4">
             {conditions.map((cond, idx) => (
@@ -162,14 +228,36 @@ export default function ConfigPage() {
                     </select>
 
                     {/* RHS */}
-                    <select
-                      value={cond.rhs}
+                    {typeof cond.rhs === "number" ? (
+                      <input
+                        type="number"
+                        step="any"
+                        value={cond.rhs}
+                        disabled={!cond.enabled}
+                        onChange={e => update(cond.id, "rhs", e.target.value === "" ? 0 : Number(e.target.value))}
+                        className="flex-1 bg-gray-100 border border-gray-200 text-gray-800 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-gray-400 disabled:cursor-not-allowed"
+                      />
+                    ) : (
+                      <select
+                        value={cond.rhs}
+                        disabled={!cond.enabled}
+                        onChange={e => update(cond.id, "rhs", e.target.value)}
+                        className="flex-1 bg-gray-100 border border-gray-200 text-gray-800 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {VARIABLES.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
+                      </select>
+                    )}
+
+                    {/* Toggle between variable / custom number on the RHS */}
+                    <button
+                      type="button"
                       disabled={!cond.enabled}
-                      onChange={e => update(cond.id, "rhs", e.target.value)}
-                      className="flex-1 bg-gray-100 border border-gray-200 text-gray-800 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-gray-400 disabled:cursor-not-allowed"
+                      onClick={() => update(cond.id, "rhs", typeof cond.rhs === "number" ? VARIABLES[0].value : 0)}
+                      title={typeof cond.rhs === "number" ? "Compare to a variable instead" : "Compare to a custom number instead"}
+                      className="text-xs text-gray-500 hover:text-emerald-600 border border-gray-200 hover:border-emerald-400 rounded px-2 py-1.5 transition-colors disabled:cursor-not-allowed"
                     >
-                      {VARIABLES.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
-                    </select>
+                      {typeof cond.rhs === "number" ? "123" : "abc"}
+                    </button>
 
                     {/* Remove */}
                     {conditions.length > 1 && (
