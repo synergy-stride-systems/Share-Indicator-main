@@ -17,6 +17,25 @@ interface StockResult {
   percent_gain: number;
   pe_ratio: number | null;
   sentiment_score: number | null;
+  score?: number;
+
+  signal?: string;
+
+  confidence?: number;
+
+  price_change?: number;
+
+  volume_change?: number;
+
+  rsi?: number;
+
+  ema20?: number;
+
+  ema50?: number;
+
+  vwap?: number;
+
+  trend?: string;
 }
 
 interface Summary {
@@ -67,6 +86,15 @@ function sentimentLabel(score: number | null | undefined) {
 
 export default function Dashboard() {
   const [results, setResults]             = useState<StockResult[]>([]);
+  const [scannerMode, setScannerMode] = useState<
+  "condition" | "strategy"
+>("condition");
+
+const [selectedStrategy, setSelectedStrategy] =
+useState("Short Covering");
+
+const [minimumScore, setMinimumScore] =
+useState(70);
   const [scanning, setScanning]           = useState(false);
   const [currentSymbol, setCurrentSymbol] = useState("");
   const [progress, setProgress]           = useState({ current: 0, total: 0 });
@@ -85,6 +113,206 @@ export default function Dashboard() {
     setLog(prev => [...prev, msg]);
 
   const startScan = async () => {
+
+  try {
+
+    setResults([]);
+
+    setSummary(null);
+
+    setLog([]);
+
+    setProgress({
+
+      current:0,
+
+      total:0
+
+    });
+
+    setScanning(true);
+
+    const user = JSON.parse(
+
+      localStorage.getItem("user") || "{}"
+
+    );
+
+    const userId = user.id;
+
+    if(!userId){
+
+      alert("User not found");
+
+      setScanning(false);
+
+      return;
+
+    }
+
+    let conditions=[];
+
+    if(scannerMode==="condition"){
+
+      const res=await fetch(
+
+        apiUrl(`/api/strategy/get/${userId}`)
+
+      );
+
+      const data=await res.json();
+
+      conditions=(data.conditions||[])
+
+      .filter((c:any)=>c.enabled);
+
+      addLog(
+
+        `Condition Scanner Started`
+
+      );
+
+    }
+
+    else{
+
+      addLog(
+
+        `Strategy Scanner Started`
+
+      );
+
+      addLog(
+
+        `Strategy : ${selectedStrategy}`
+
+      );
+
+    }
+
+    const es=new EventSource(
+
+      scanUrl(
+
+        `/scan?mode=${scannerMode}`+
+
+        `&strategy=${encodeURIComponent(selectedStrategy)}`+
+
+        `&minimumScore=${minimumScore}`+
+
+        `&conditions=${encodeURIComponent(
+
+          JSON.stringify(conditions)
+
+        )}`
+
+      )
+
+    );
+
+    eventSourceRef.current=es;
+
+    es.onmessage=(e)=>{
+
+      const safe=e.data.replace(
+
+        /\bNaN\b/g,
+
+        "null"
+
+      );
+
+      const msg=JSON.parse(safe);
+
+      switch(msg.type){
+
+        case "progress":
+
+          setCurrentSymbol(msg.symbol);
+
+          setProgress({
+
+            current:msg.current,
+
+            total:msg.total
+
+          });
+
+          addLog(
+
+            `Scanning ${msg.symbol}`
+
+          );
+
+          break;
+
+        case "result":
+
+          setResults(prev=>
+
+            [...prev,msg.data]
+
+            .sort(
+
+              (a,b)=>
+
+              (b.score??0)-(a.score??0)
+
+            )
+
+          );
+
+          addLog(
+
+            `✓ ${msg.data.symbol}`
+
+          );
+
+          break;
+
+        case "summary":
+
+          setSummary(msg);
+
+          break;
+
+        case "stop":
+
+          setScanning(false);
+
+          es.close();
+
+          addLog("Completed");
+
+          break;
+
+      }
+
+    };
+
+    es.onerror=()=>{
+
+      setScanning(false);
+
+      addLog("Connection Lost");
+
+      es.close();
+
+    };
+
+  }
+
+  catch(err){
+
+    console.log(err);
+
+    setScanning(false);
+
+  }
+
+};
+
+  {/*const startScan = async () => {
   try {
     setResults([]);
     setSummary(null);
@@ -170,7 +398,7 @@ export default function Dashboard() {
     setScanning(false);
     addLog("Error starting scan");
   }
-};
+};*/}
 
   {/*const startScan = async () => {
     try {
@@ -295,6 +523,118 @@ export default function Dashboard() {
             Logout
           </button>*/}
         </div>
+
+        <div className="bg-white border rounded-lg p-5 mb-6 shadow-sm">
+
+<h2 className="text-sm font-bold mb-4">
+
+Scanner Configuration
+
+</h2>
+
+<div className="flex gap-8">
+
+<label className="flex items-center gap-2">
+
+<input
+
+type="radio"
+
+checked={scannerMode==="condition"}
+
+onChange={()=>
+
+setScannerMode("condition")
+
+}
+
+/>
+
+Condition Scanner
+
+</label>
+
+<label className="flex items-center gap-2">
+
+<input
+
+type="radio"
+
+checked={scannerMode==="strategy"}
+
+onChange={()=>
+
+setScannerMode("strategy")
+
+}
+
+/>
+
+Strategy Scanner
+
+</label>
+
+</div>
+
+{
+
+scannerMode==="strategy" && (
+
+<div className="flex gap-4 mt-5">
+
+<select
+
+className="border rounded px-3 py-2"
+
+value={selectedStrategy}
+
+onChange={(e)=>
+
+setSelectedStrategy(
+
+e.target.value
+
+)
+
+}
+
+>
+
+<option>
+
+Short Covering
+
+</option>
+
+</select>
+
+<input
+
+type="number"
+
+value={minimumScore}
+
+onChange={(e)=>
+
+setMinimumScore(
+
+Number(e.target.value)
+
+)
+
+}
+
+className="border rounded px-3 py-2 w-28"
+
+/>
+
+</div>
+
+)
+
+}
+
+</div>
 
         {/* Controls */}
         <div className="flex gap-3 mb-6">
