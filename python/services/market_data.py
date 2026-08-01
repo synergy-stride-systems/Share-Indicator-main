@@ -1,10 +1,112 @@
+import os
+import threading
+
 import yfinance as yf
 from datetime import datetime, timedelta
 
 from services.indicator_service import IndicatorService
+from services.nse_data import NSEDataService, strip_yf_suffix
+
+# List of symbols with F&O (futures & options) contracts. OI data
+# only exists for these, so we skip the extra NSE call entirely for
+# anything not on this list.
+_FNO_LIST_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "fno_list.txt"
+)
+
+
+def _load_fno_set():
+
+    try:
+        with open(_FNO_LIST_PATH, "r") as f:
+            return {
+                strip_yf_suffix(line.strip()).upper()
+                for line in f
+                if line.strip()
+            }
+    except Exception as e:
+        print(f"Could not load fno_list.txt: {e}")
+        return set()
+
+
+FNO_SYMBOLS = _load_fno_set()
 
 
 class MarketDataService:
+    """
+    Hybrid data source:
+      - OHLCV price history + indicators + index change -> yfinance
+        (reliable, well-tested library; feeds everything downstream)
+      - Delivery % / delivery change + F&O OI change     -> NSE
+        (the only two fields yfinance doesn't have)
+
+    If NSE is blocked, down, or changes shape, only
+    delivery_percentage / delivery_change / oi_change come back as
+    None -- price data and every indicator keep working normally,
+    since they never touch NSE.
+    """
+
+    def __init__(self):
+        self.nse = NSEDataService()
+
+        # Cache the index's own daily % change so a full watchlist
+        # scan only fetches it once, not once per symbol.
+        self._index_change_cache = None
+        self._index_change_cache_date = None
+        self._index_lock = threading.Lock()
+
+    # --------------------------------------------------
+    # INDEX CHANGE (RELATIVE STRENGTH BENCHMARK) - yfinance
+    # --------------------------------------------------
+
+    def get_index_change(self):
+
+        today = datetime.today().date()
+
+        with self._index_lock:
+
+            if (
+                self._index_change_cache is not None
+                and self._index_change_cache_date == today
+            ):
+                return self._index_change_cache
+
+            try:
+
+                index_ticker = yf.Ticker("^NSEI")
+
+                end = datetime.today()
+                start = end - timedelta(days=10)
+
+                index_df = index_ticker.history(
+                    start=start, end=end, auto_adjust=False
+                )
+
+                if index_df.empty or len(index_df) < 2:
+                    return None
+
+                index_change = IndicatorService.price_change(
+                    index_df
+                ).iloc[-1]
+
+                if index_change is None:
+                    return None
+
+                index_change = round(float(index_change), 2)
+
+                self._index_change_cache = index_change
+                self._index_change_cache_date = today
+
+                return index_change
+
+            except Exception as e:
+                print(f"Index change fetch error: {e}")
+                return None
+
+    # --------------------------------------------------
+    # PER-STOCK DATA
+    # --------------------------------------------------
 
     def get_stock_data(self, symbol):
 
@@ -13,13 +115,10 @@ class MarketDataService:
             ticker = yf.Ticker(symbol)
 
             end = datetime.today()
-
             start = end - timedelta(days=120)
 
             df = ticker.history(
-                start=start,
-                end=end,
-                auto_adjust=False
+                start=start, end=end, auto_adjust=False
             )
 
             if df.empty or len(df) < 50:
@@ -70,6 +169,19 @@ class MarketDataService:
             prev = df.iloc[-2]
 
             curr = df.iloc[-1]
+
+            # ====================================================
+            # NSE extras: delivery % / delivery change, F&O OI
+            # ====================================================
+
+            delivery = self.nse.get_delivery_data(symbol)
+
+            bare_symbol = strip_yf_suffix(symbol).upper()
+
+            if bare_symbol in FNO_SYMBOLS:
+                oi_change = self.nse.get_oi_change(symbol)
+            else:
+                oi_change = None
 
             # ====================================================
             # Return Dictionary
@@ -135,9 +247,9 @@ class MarketDataService:
 
                 "trend": IndicatorService.trend(df),
 
-                "breakout": IndicatorService.breakout(df),
+                "breakout": bool(IndicatorService.breakout(df)),
 
-                "breakdown": IndicatorService.breakdown(df),
+                "breakdown": bool(IndicatorService.breakdown(df)),
 
                 "volatility": round(
                     float(
@@ -168,17 +280,25 @@ class MarketDataService:
                     2
                 ),
 
-                # ===================================================
-                # Future Fields (To be added later)
-                # ===================================================
+                # -----------------------
+                # Relative Strength Benchmark
+                # -----------------------
 
-                "delivery_percentage": None,
+                "index_change": self.get_index_change(),
 
-                "delivery_change": None,
+                # -----------------------
+                # Delivery (NSE)
+                # -----------------------
 
-                "oi_change": None,
+                "delivery_percentage": delivery["delivery_percentage"],
 
-                "index_change": None
+                "delivery_change": delivery["delivery_change"],
+
+                # -----------------------
+                # Open Interest (NSE, F&O symbols only)
+                # -----------------------
+
+                "oi_change": oi_change
 
             }
 

@@ -19,8 +19,11 @@ class ShortCoveringStrategy(BaseStrategy):
         "delivery": 15,
         "oi": 25,
         "relative_strength": 10,
-        "trend": 5
+        "trend": 5,
+        "vwap": 5
     }
+
+    MAX_RAW_SCORE = sum(WEIGHTS.values())  # 105
 
     SIGNAL_LEVELS = {
         80: "Very Strong",
@@ -42,7 +45,11 @@ class ShortCoveringStrategy(BaseStrategy):
         score = 0
         reasons = []
 
-        change = stock.get("price_change", 0)
+        change = stock.get("price_change")
+
+        if change is None:
+            reasons.append("Price Data Unavailable")
+            return score, reasons
 
         if change >= 4:
 
@@ -79,7 +86,11 @@ class ShortCoveringStrategy(BaseStrategy):
         score = 0
         reasons = []
 
-        volume = stock.get("volume_change", 0)
+        volume = stock.get("volume_change")
+
+        if volume is None:
+            reasons.append("Volume Data Unavailable")
+            return score, reasons
 
         if volume >= 200:
 
@@ -165,17 +176,12 @@ class ShortCoveringStrategy(BaseStrategy):
 
     def classify_signal(self, score):
 
-        if score >= 80:
-            return "Very Strong"
+        # Single source of truth: reads from SIGNAL_LEVELS instead of
+        # duplicating the same thresholds as separate if/elif branches.
+        for threshold in sorted(self.SIGNAL_LEVELS.keys(), reverse=True):
 
-        if score >= 65:
-            return "Strong"
-
-        if score >= 50:
-            return "Moderate"
-
-        if score >= 35:
-            return "Weak"
+            if score >= threshold:
+                return self.SIGNAL_LEVELS[threshold]
 
         return "No Signal"
 
@@ -190,6 +196,10 @@ class ShortCoveringStrategy(BaseStrategy):
 
         delivery_percent = stock.get("delivery_percentage")
         delivery_change = stock.get("delivery_change")
+
+        if delivery_percent is None and delivery_change is None:
+            reasons.append("Delivery Data Unavailable")
+            return score, reasons
 
         if delivery_percent is not None:
 
@@ -229,6 +239,7 @@ class ShortCoveringStrategy(BaseStrategy):
         oi_change = stock.get("oi_change")
 
         if oi_change is None:
+            reasons.append("OI Data Unavailable (Non-F&O or Not Fetched)")
             return score, reasons
 
         if oi_change <= -15:
@@ -266,8 +277,19 @@ class ShortCoveringStrategy(BaseStrategy):
         score = 0
         reasons = []
 
-        stock_return = stock.get("price_change", 0)
-        index_return = stock.get("index_change", 0)
+        stock_return = stock.get("price_change")
+        index_return = stock.get("index_change")
+
+        # `.get(key, default)` only falls back when the key is MISSING.
+        # Both fields exist on the stock dict but may hold `None`
+        # (e.g. before market_data.py has real index data), so we
+        # need an explicit None check rather than a `.get` default.
+        if stock_return is None:
+            reasons.append("Relative Strength Data Unavailable")
+            return score, reasons
+
+        if index_return is None:
+            index_return = 0
 
         rs = stock_return - index_return
 
@@ -409,7 +431,7 @@ class ShortCoveringStrategy(BaseStrategy):
         )
 
         # Normalize to 100
-        total_score = round((raw_score / 105) * 100)
+        total_score = round((raw_score / self.MAX_RAW_SCORE) * 100)
 
         signal = self.classify_signal(total_score)
 

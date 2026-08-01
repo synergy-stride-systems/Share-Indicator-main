@@ -295,27 +295,26 @@ class IndicatorService:
     # BREAKOUT
     # =====================================================
 
+   
     @staticmethod
     def breakout(df):
-
         resistance = df["High"].rolling(20).max()
-
         latest_close = df["Close"].iloc[-1]
 
-        return latest_close > resistance.iloc[-2]
+        return bool(latest_close > resistance.iloc[-2])
 
     # =====================================================
     # BREAKDOWN
     # =====================================================
 
+    
+
     @staticmethod
     def breakdown(df):
-
         support = df["Low"].rolling(20).min()
-
         latest_close = df["Close"].iloc[-1]
 
-        return latest_close < support.iloc[-2]
+        return bool(latest_close < support.iloc[-2])
 
     # =====================================================
     # CANDLE BODY %

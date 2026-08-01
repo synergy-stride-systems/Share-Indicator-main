@@ -4,11 +4,14 @@ from unittest import result
 from services.market_data import MarketDataService
 from engines.strategy_manager import StrategyManager
 from engines.strategies.condition_strategy import ConditionStrategy
+from engines.strategies.short_covering import ShortCoveringStrategy
+...
+       
 
 
 class ScannerEngine:
 
-    def __init__(self, symbols, max_workers=10):
+    def __init__(self, symbols, max_workers=3):
         self.symbols = symbols
         self.market_data = MarketDataService()
         self.max_workers = max_workers
@@ -34,6 +37,11 @@ class ScannerEngine:
                 ConditionStrategy(conditions)
          )
 
+           
+            manager.register(
+                ShortCoveringStrategy()
+        )
+
         # Future Strategies
         #
         # from engines.strategies.short_covering import ShortCoveringStrategy
@@ -45,7 +53,7 @@ class ScannerEngine:
                 return None
 
         # Use metric calculated by MarketDataService
-            stock["percent_gain"] = stock.get("intraday_change", 0)
+            stock["percent_gain"] = stock.get("price_change", 0)
 
             return stock
 
