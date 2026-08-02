@@ -12,14 +12,12 @@ config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ssl =
+const ssl=
   process.env.DB_SSL === "true"
     ? {
-        ca: fs.readFileSync(
-          path.join(__dirname, "../certs/DigiCertGlobalRootG2.crt.pem")
-        ),
+        rejectUnauthorized: false,
       }
-    : undefined;
+    : undefined,
 
 export const AppDataSource = new DataSource({
   type: "mysql",
@@ -37,7 +35,10 @@ export const AppDataSource = new DataSource({
   migrations: [],
   subscribers: [],
 
+
   extra: {
-    connectTimeout: 30000,
+  ssl: {
+    rejectUnauthorized: false,
   },
+},
 });
