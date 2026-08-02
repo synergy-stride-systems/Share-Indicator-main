@@ -1,23 +1,17 @@
 import { DataSource } from "typeorm";
 import { config } from "dotenv";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 
 import { User } from "../models/user.model.js";
 import { Strategy } from "../models/stratergy.model.js";
 
 config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const ssl=
+const ssl =
   process.env.DB_SSL === "true"
     ? {
         rejectUnauthorized: false,
       }
-    : undefined,
+    : undefined;
 
 export const AppDataSource = new DataSource({
   type: "mysql",
@@ -29,16 +23,12 @@ export const AppDataSource = new DataSource({
 
   synchronize: process.env.DB_SYNC === "true",
 
-  ssl,
-
   entities: [User, Strategy],
   migrations: [],
   subscribers: [],
 
-
   extra: {
-  ssl: {
-    rejectUnauthorized: false,
+    ssl,
+    connectTimeout: 30000,
   },
-},
 });
