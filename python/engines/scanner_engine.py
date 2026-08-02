@@ -1,15 +1,21 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from unittest import result
-
 from services.market_data import MarketDataService
-from engines.strategy_manager import StrategyManager
 from engines.strategies.condition_strategy import ConditionStrategy
 from engines.strategies.short_covering import ShortCoveringStrategy
-...
-       
+from engines.strategies.positioning_strategies import PositioningStrategy
+from engines.strategies.technical_strategies import TechnicalStrategy
 
 
 class ScannerEngine:
+
+    POSITIONING_STRATEGIES = (
+        "Short Covering",
+        "Long Build-up",
+        "Short Build-up",
+        "Long Unwinding",
+    )
+    TECHNICAL_STRATEGIES = TechnicalStrategy.SUPPORTED
+    ALL_STRATEGIES = POSITIONING_STRATEGIES + TECHNICAL_STRATEGIES
 
     def __init__(self, symbols, max_workers=3):
         self.symbols = symbols
@@ -20,7 +26,14 @@ class ScannerEngine:
     # Scan One Stock
     # -----------------------------------------------------
 
-    def scan_stock(self, symbol, conditions):
+    def scan_stock(
+        self,
+        symbol,
+        conditions,
+        mode="condition",
+        strategy_name="Short Covering",
+        minimum_score=0,
+    ):
 
         try:
 
@@ -30,31 +43,39 @@ class ScannerEngine:
             if stock is None:
                 return None
 
-            manager = StrategyManager()
+            if mode == "strategy":
+                selected_names = (
+                    self.ALL_STRATEGIES
+                    if strategy_name == "All Strategies"
+                    else (strategy_name,)
+                )
+                matches = []
+                for name in selected_names:
+                    if name == "Short Covering":
+                        strategy = ShortCoveringStrategy()
+                    elif name in self.TECHNICAL_STRATEGIES:
+                        strategy = TechnicalStrategy(name)
+                    else:
+                        strategy = PositioningStrategy(name)
+                    result = strategy.execute(stock)
+                    if not result["passed"] or result["score"] < minimum_score:
+                        continue
 
-        # Existing Condition Strategy
-            manager.register(
-                ConditionStrategy(conditions)
-         )
+                    # Flatten each matching strategy so the SSE consumer can
+                    # render one row per symbol/setup combination.
+                    strategy_fields = {key: value for key, value in result.items() if key != "stock"}
+                    matches.append({
+                        **stock,
+                        **strategy_fields,
+                        "percent_gain": stock.get("price_change", 0),
+                    })
+                return matches or None
 
-           
-            manager.register(
-                ShortCoveringStrategy()
-        )
-
-        # Future Strategies
-        #
-        # from engines.strategies.short_covering import ShortCoveringStrategy
-        # manager.register(ShortCoveringStrategy())
-
-            result = manager.execute(stock)
-
+            result = ConditionStrategy(conditions).execute(stock)
             if result is None:
                 return None
 
-        # Use metric calculated by MarketDataService
             stock["percent_gain"] = stock.get("price_change", 0)
-
             return stock
 
         except Exception as e:
@@ -69,7 +90,14 @@ class ScannerEngine:
     # Scan All Stocks
     # -----------------------------------------------------
 
-    def scan(self, conditions, progress_callback=None):
+    def scan(
+        self,
+        conditions,
+        progress_callback=None,
+        mode="condition",
+        strategy_name="Short Covering",
+        minimum_score=0,
+    ):
 
         results = []
 
@@ -86,7 +114,10 @@ class ScannerEngine:
                 executor.submit(
                     self.scan_stock,
                     symbol,
-                    conditions
+                    conditions,
+                    mode,
+                    strategy_name,
+                    minimum_score,
                 ): symbol
 
                 for symbol in self.symbols
@@ -113,15 +144,15 @@ class ScannerEngine:
                     result = future.result()
 
                     if result:
-                        results.append(result)
+                        results.extend(result if isinstance(result, list) else [result])
 
                 except Exception as e:
 
                     print(f"{symbol}: {e}")
 
-        # Sort highest gain first
+        # Highest-confidence strategies first, with price change as a tiebreaker.
         results.sort(
-            key=lambda x: x.get("percent_gain", 0),
+            key=lambda x: (x.get("score", 0), x.get("percent_gain", 0)),
             reverse=True
         )
 

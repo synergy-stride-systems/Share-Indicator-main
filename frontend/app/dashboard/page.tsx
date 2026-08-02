@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
@@ -8,41 +9,35 @@ import { apiUrl, scanUrl } from "../../lib/api";
 
 interface StockResult {
   symbol: string;
-  prev_close: number;
-  prev_low: number;
-  curr_open: number;
-  curr_low: number;
-  curr_close: number;
-  volume: number;
-  percent_gain: number;
-  pe_ratio: number | null;
-  sentiment_score: number | null;
-  score?: number;
-
-  signal?: string;
-
-  confidence?: number;
-
+  market_date?: string;
+  percent_gain?: number;
+  curr_close?: number;
+  curr_volume?: number;
   price_change?: number;
-
   volume_change?: number;
-
   rsi?: number;
-
-  ema20?: number;
-
-  ema50?: number;
-
-  vwap?: number;
-
   trend?: string;
+  score?: number;
+  market_structure?: string;
+  signal?: string;
+  confidence?: number;
+  risk?: string;
+  entry?: number;
+  stoploss?: number;
+  target?: number;
+  oi_change?: number | null;
+  oi_status?: string;
+  strategy?: string;
 }
 
 interface Summary {
   total_scanned: number;
   total_signals: number;
-  max_gain?: { symbol: string; gain: number };
-  min_gain?: { symbol: string; gain: number };
+  max_gain?: number;
+  max_gain_symbol?: string;
+  min_gain?: number;
+  min_gain_symbol?: string;
+  message?: string;
 }
 
 interface Condition {
@@ -50,706 +45,498 @@ interface Condition {
   enabled: boolean;
   lhs: string;
   op: string;
-  rhs: string;
+  rhs: string | number;
 }
 
-const STORAGE_KEY = "scanner_conditions";
+const dash = "—";
 
-const DEFAULT_CONDITIONS: Condition[] = [
-  { id: 1, enabled: true, lhs: "curr_open",  op: "<", rhs: "prev_close" },
-  { id: 2, enabled: true, lhs: "curr_open",  op: ">", rhs: "prev_low"   },
-  { id: 3, enabled: true, lhs: "curr_low",   op: "<", rhs: "prev_low"   },
-  { id: 4, enabled: true, lhs: "curr_close", op: ">", rhs: "prev_close" },
-];
-
-function getActiveConditions(): Condition[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed: Condition[] = JSON.parse(stored);
-      return parsed.filter(c => c.enabled);
-    }
-  } catch {
-    // fall through to default
-  }
-  return DEFAULT_CONDITIONS.filter(c => c.enabled);
-}
-
-function sentimentLabel(score: number | null | undefined) {
-  if (score === null || score === undefined) {
-    return { text: "—", className: "text-gray-300" };
-  }
-  if (score > 0.05) return { text: `+${score.toFixed(2)}`, className: "text-emerald-600" };
-  if (score < -0.05) return { text: score.toFixed(2), className: "text-red-500" };
-  return { text: score.toFixed(2), className: "text-gray-400" };
+function numberText(value: number | null | undefined, digits = 2) {
+  return value === null || value === undefined ? dash : value.toFixed(digits);
 }
 
 export default function Dashboard() {
-  const [results, setResults]             = useState<StockResult[]>([]);
-  const [scannerMode, setScannerMode] = useState<
-  "condition" | "strategy"
->("condition");
+  const router = useRouter();
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-const [selectedStrategy, setSelectedStrategy] =
-useState("Short Covering");
-
-const [minimumScore, setMinimumScore] =
-useState(70);
-  const [scanning, setScanning]           = useState(false);
+  const [results, setResults] = useState<StockResult[]>([]);
+  const [scannerMode, setScannerMode] = useState<"condition" | "strategy">("condition");
+  const [selectedStrategy, setSelectedStrategy] = useState("Short Covering");
+  const [minimumScore, setMinimumScore] = useState(70);
+  const [scanning, setScanning] = useState(false);
   const [currentSymbol, setCurrentSymbol] = useState("");
-  const [progress, setProgress]           = useState({ current: 0, total: 0 });
-  const [summary, setSummary]             = useState<Summary | null>(null);
-  const [log, setLog]                     = useState<string[]>([]);
-  const eventSourceRef                    = useRef<EventSource | null>(null);
-  const logEndRef                         = useRef<HTMLDivElement>(null);
-  const router                            = useRouter();
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [log, setLog] = useState<string[]>([]);
 
   useEffect(() => {
     if (!localStorage.getItem("token")) router.push("/");
+
+    return () => eventSourceRef.current?.close();
   }, [router]);
 
-
-  const addLog = (msg: string) =>
-    setLog(prev => [...prev, msg]);
+  const addLog = (message: string) => {
+    setLog((previous) => [...previous, message]);
+  };
 
   const startScan = async () => {
-
-  try {
-
-    setResults([]);
-
-    setSummary(null);
-
-    setLog([]);
-
-    setProgress({
-
-      current:0,
-
-      total:0
-
-    });
-
-    setScanning(true);
-
-    const user = JSON.parse(
-
-      localStorage.getItem("user") || "{}"
-
-    );
-
-    const userId = user.id;
-
-    if(!userId){
-
-      alert("User not found");
-
-      setScanning(false);
-
-      return;
-
-    }
-
-    let conditions=[];
-
-    if(scannerMode==="condition"){
-
-      const res=await fetch(
-
-        apiUrl(`/api/strategy/get/${userId}`)
-
-      );
-
-      const data=await res.json();
-
-      conditions=(data.conditions||[])
-
-      .filter((c:any)=>c.enabled);
-
-      addLog(
-
-        `Condition Scanner Started`
-
-      );
-
-    }
-
-    else{
-
-      addLog(
-
-        `Strategy Scanner Started`
-
-      );
-
-      addLog(
-
-        `Strategy : ${selectedStrategy}`
-
-      );
-
-    }
-
-    const es=new EventSource(
-
-      scanUrl(
-
-        `/scan?mode=${scannerMode}`+
-
-        `&strategy=${encodeURIComponent(selectedStrategy)}`+
-
-        `&minimumScore=${minimumScore}`+
-
-        `&conditions=${encodeURIComponent(
-
-          JSON.stringify(conditions)
-
-        )}`
-
-      )
-
-    );
-
-    eventSourceRef.current=es;
-
-    es.onmessage=(e)=>{
-
-      const safe=e.data.replace(
-
-        /\bNaN\b/g,
-
-        "null"
-
-      );
-
-      const msg=JSON.parse(safe);
-
-      switch(msg.type){
-
-        case "progress":
-
-          setCurrentSymbol(msg.symbol);
-
-          setProgress({
-
-            current:msg.current,
-
-            total:msg.total
-
-          });
-
-          addLog(
-
-            `Scanning ${msg.symbol}`
-
-          );
-
-          break;
-
-        case "result":
-
-          setResults(prev=>
-
-            [...prev,msg.data]
-
-            .sort(
-
-              (a,b)=>
-
-              (b.score??0)-(a.score??0)
-
-            )
-
-          );
-
-          addLog(
-
-            `✓ ${msg.data.symbol}`
-
-          );
-
-          break;
-
-        case "summary":
-
-          setSummary(msg);
-
-          break;
-
-        case "stop":
-
-          setScanning(false);
-
-          es.close();
-
-          addLog("Completed");
-
-          break;
-
-      }
-
-    };
-
-    es.onerror=()=>{
-
-      setScanning(false);
-
-      addLog("Connection Lost");
-
-      es.close();
-
-    };
-
-  }
-
-  catch(err){
-
-    console.log(err);
-
-    setScanning(false);
-
-  }
-
-};
-
-  {/*const startScan = async () => {
-  try {
-    setResults([]);
-    setSummary(null);
-    setLog([]);
-    setProgress({ current: 0, total: 0 });
-    setScanning(true);
-
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const userId = user.id;
-
-    if (!userId) {
-      alert("User not found");
-      setScanning(false);
-      return;
-    }
-
-    // Get conditions from backend
-    const res = await fetch(apiUrl(`/api/strategy/get/${userId}`));
-    const data = await res.json();
-
-    const conditions = (data.conditions || []).filter(
-      (c: any) => c.enabled
-    );
-
-    addLog(`Starting scan with ${conditions.length} condition(s)...`);
-
-    // Start SSE connection
-    const es = new EventSource(
-      scanUrl(
-        `/scan?conditions=${encodeURIComponent(
-          JSON.stringify(conditions)
-        )}`
-      )
-    );
-
-    eventSourceRef.current = es;
-
-    es.onmessage = (e) => {
-      const safeData = e.data.replace(/\bNaN\b/g, "null");
-      const msg = JSON.parse(safeData);
-
-      if (msg.type === "progress") {
-        setCurrentSymbol(msg.symbol || "");
-        setProgress({
-          current: msg.current,
-          total: msg.total,
-        });
-
-        addLog(`Scanning (${msg.current}/${msg.total})`);
-      }
-
-      if (msg.type === "result") {
-        setResults((prev) =>
-          [...prev, msg.data].sort(
-            (a, b) => b.percent_gain - a.percent_gain
-          )
-        );
-
-        addLog(
-          `✓ BUY: ${msg.data.symbol} +${msg.data.percent_gain}%`
-        );
-      }
-
-      if (msg.type === "summary") {
-        setSummary(msg.data);
-      }
-
-      if (msg.type === "stop") {
-        setScanning(false);
-        es.close();
-        addLog("Scan complete");
-      }
-    };
-
-    es.onerror = () => {
-      addLog("Connection error");
-      setScanning(false);
-      es.close();
-    };
-
-  } catch (err) {
-    console.error(err);
-    setScanning(false);
-    addLog("Error starting scan");
-  }
-};*/}
-
-  {/*const startScan = async () => {
     try {
       setResults([]);
       setSummary(null);
       setLog([]);
       setProgress({ current: 0, total: 0 });
+      setCurrentSymbol("");
       setScanning(true);
 
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      const userId = user.id;
+      let conditions: Condition[] = [];
 
-    if (!userId) {
-      alert("User not found");
-      return;
-    }
+      if (scannerMode === "condition") {
+        const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-    // ✅ get conditions from backend
-    const res = await fetch(apiUrl(`/api/strategy/get/${userId}`));
-    const data = await res.json();
+        if (!user.id) {
+          alert("User not found. Please sign in again.");
+          setScanning(false);
+          return;
+        }
 
-    const conditions = (data.conditions || []).filter((c: any) => c.enabled);
+        const response = await fetch(apiUrl(`/api/strategy/get/${user.id}`));
 
-    addLog(`Starting scan with ${conditions.length} condition(s)...`);
+        if (!response.ok) {
+          throw new Error("Could not load scanner conditions");
+        }
 
-    // ✅ ONLY THIS (no POST, no /stream)
-    const es = new EventSource(
-      `${scanUrl(`/scan?conditions=${encodeURIComponent(JSON.stringify(conditions))}`)}`
-    );
+        const data = await response.json();
 
-    eventSourceRef.current = es;
+        conditions = (data.conditions || []).filter(
+          (condition: Condition) => condition.enabled,
+        );
 
-    es.onmessage = (e) => {
-      const safeData = e.data.replace(/\bNaN\b/g, "null");
-      const msg = JSON.parse(safeData);
-
-      if (msg.type === "progress") {
-        setCurrentSymbol(msg.symbol || "");
-        setProgress({ current: msg.current, total: msg.total });
-        addLog(`Scanning (${msg.current}/${msg.total})`);
+        addLog(
+          `Condition scanner started with ${conditions.length} condition(s).`,
+        );
+      } else {
+        addLog(`${selectedStrategy} strategy scanner started.`);
+        addLog(`Minimum score: ${minimumScore}`);
       }
 
-      const res = await fetch(`http://localhost:4000/api/strategy/get/${userId}`);
-      const data = await res.json();
+      const query = new URLSearchParams({
+        mode: scannerMode,
+        strategy: selectedStrategy,
+        minimumScore: String(minimumScore),
+        conditions: JSON.stringify(conditions),
+      });
 
-      const conditions = (data.conditions || []).filter((c: any) => c.enabled);
-
-      addLog(`Starting scan with ${conditions.length} condition(s)...`);
-
-      const es = new EventSource(
-        `http://localhost:5000/scan?conditions=${encodeURIComponent(JSON.stringify(conditions))}`
+      const eventSource = new EventSource(
+        scanUrl(`/scan?${query.toString()}`),
       );
 
-      eventSourceRef.current = es;
+      eventSourceRef.current = eventSource;
 
-      es.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
-
-        if (msg.type === "progress") {
-          setCurrentSymbol(msg.symbol || "");
-          setProgress({ current: msg.current, total: msg.total });
-          addLog(`Scanning (${msg.current}/${msg.total})`);
-        }
-
-        if (msg.type === "result") {
-          setResults(prev =>
-            [...prev, msg.data].sort((a, b) => b.percent_gain - a.percent_gain)
+      eventSource.onmessage = (event) => {
+        try {
+          const message = JSON.parse(
+            event.data.replace(/\bNaN\b/g, "null"),
           );
-          addLog(`✓ BUY: ${msg.data.symbol} +${msg.data.percent_gain}%`);
-        }
 
-        if (msg.type === "stop") {
-          setScanning(false);
-          es.close();
-          addLog("Scan complete");
+          if (message.type === "progress") {
+            setCurrentSymbol(message.symbol || "");
+            setProgress({
+              current: message.current || 0,
+              total: message.total || 0,
+            });
+
+            addLog(`Scanning ${message.symbol}`);
+          }
+
+          if (message.type === "result") {
+            setResults((previous) =>
+              [...previous, message.data].sort((first, second) => {
+                if (scannerMode === "strategy") {
+                  return (second.score || 0) - (first.score || 0);
+                }
+
+                return (
+                  (second.percent_gain || 0) -
+                  (first.percent_gain || 0)
+                );
+              }),
+            );
+
+            addLog(`✓ Signal found: ${message.data.symbol}`);
+          }
+
+          if (message.type === "summary") {
+            setSummary(message);
+
+            if (message.message) {
+              addLog(message.message);
+            }
+          }
+
+          if (message.type === "stop") {
+            setScanning(false);
+            eventSource.close();
+            addLog("Scan completed.");
+          }
+        } catch {
+          addLog("Could not read a scanner update.");
         }
       };
 
-      es.onerror = () => {
-        addLog("Connection error");
+      eventSource.onerror = () => {
         setScanning(false);
-        es.close();
+        eventSource.close();
+        addLog("Scanner connection lost.");
       };
-
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(error);
       setScanning(false);
-      addLog("Error starting scan");
+      addLog("Could not start the scan.");
     }
-  };*/}
+  };
 
-  const stopScan = async () => {
-    await fetch(apiUrl("/scan/stop"), { method: "POST" });
+  const stopScan = () => {
     eventSourceRef.current?.close();
     setScanning(false);
-    addLog("Scan stopped by user.");
+    addLog("Scan display stopped by user.");
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    router.push("/");
-  };
-
-  const pct = progress.total > 0
-    ? Math.round((progress.current / progress.total) * 100)
-    : 0;
+  const progressPercent =
+    progress.total > 0
+      ? Math.round((progress.current / progress.total) * 100)
+      : 0;
 
   return (
     <>
       <Header />
-      <div className="min-h-screen bg-gray-100 text-gray-900 p-8 font-mono">
 
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-xl font-bold tracking-widest uppercase text-gray-900">
+      <main className="min-h-screen bg-gray-100 p-8 font-mono text-gray-900">
+        <div className="mb-4 flex items-center justify-between">
+          <h1 className="text-xl font-bold uppercase tracking-widest">
             Share Indicator
           </h1>
-          {/*<button
-            onClick={handleLogout}
-            className="text-xs text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest"
-          >
-            Logout
-          </button>*/}
         </div>
 
-        <div className="bg-white border rounded-lg p-5 mb-6 shadow-sm">
+        <section className="mb-6 rounded-lg border bg-white p-5 shadow-sm">
+          <h2 className="mb-4 text-sm font-bold">
+            Scanner Configuration
+          </h2>
 
-<h2 className="text-sm font-bold mb-4">
+          <div className="flex flex-wrap gap-8">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                checked={scannerMode === "condition"}
+                onChange={() => setScannerMode("condition")}
+              />
+              Condition Scanner
+            </label>
 
-Scanner Configuration
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                checked={scannerMode === "strategy"}
+                onChange={() => setScannerMode("strategy")}
+              />
+              Strategy Scanner
+            </label>
+          </div>
 
-</h2>
+          {scannerMode === "strategy" && (
+            <div className="mt-5 flex flex-wrap gap-4">
+              <select
+                className="rounded border px-3 py-2"
+                value={selectedStrategy}
+                onChange={(event) =>
+                  setSelectedStrategy(event.target.value)
+                }
+              >
+                <option>All Strategies</option>
+                <option>Short Covering</option>
+                <option>Long Build-up</option>
+                <option>Short Build-up</option>
+                <option>Long Unwinding</option>
+                <option>Breakout with Volume</option>
+                <option>Breakdown with Volume</option>
+                <option>VWAP Momentum</option>
+                <option>EMA 20/50 Crossover</option>
+                <option>RSI Reversal</option>
+                <option>Bollinger Band Breakout</option>
+              </select>
 
-<div className="flex gap-8">
+              <label className="flex items-center gap-2 text-sm">
+                Minimum score
 
-<label className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={minimumScore}
+                  onChange={(event) =>
+                    setMinimumScore(Number(event.target.value))
+                  }
+                  className="w-24 rounded border px-3 py-2"
+                />
+              </label>
+            </div>
+          )}
+        </section>
 
-<input
-
-type="radio"
-
-checked={scannerMode==="condition"}
-
-onChange={()=>
-
-setScannerMode("condition")
-
-}
-
-/>
-
-Condition Scanner
-
-</label>
-
-<label className="flex items-center gap-2">
-
-<input
-
-type="radio"
-
-checked={scannerMode==="strategy"}
-
-onChange={()=>
-
-setScannerMode("strategy")
-
-}
-
-/>
-
-Strategy Scanner
-
-</label>
-
-</div>
-
-{
-
-scannerMode==="strategy" && (
-
-<div className="flex gap-4 mt-5">
-
-<select
-
-className="border rounded px-3 py-2"
-
-value={selectedStrategy}
-
-onChange={(e)=>
-
-setSelectedStrategy(
-
-e.target.value
-
-)
-
-}
-
->
-
-<option>
-
-Short Covering
-
-</option>
-
-</select>
-
-<input
-
-type="number"
-
-value={minimumScore}
-
-onChange={(e)=>
-
-setMinimumScore(
-
-Number(e.target.value)
-
-)
-
-}
-
-className="border rounded px-3 py-2 w-28"
-
-/>
-
-</div>
-
-)
-
-}
-
-</div>
-
-        {/* Controls */}
-        <div className="flex gap-3 mb-6">
+        <div className="mb-6 flex gap-3">
           <button
             onClick={startScan}
             disabled={scanning}
-            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm rounded transition-colors"
+            className="rounded bg-emerald-600 px-5 py-2 text-sm text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
           >
             {scanning ? "Scanning..." : "Start Scan"}
           </button>
+
           <button
             onClick={stopScan}
             disabled={!scanning}
-            className="px-5 py-2 bg-red-500 hover:bg-red-400  text-white text-sm rounded transition-colors"
+            className="rounded bg-red-500 px-5 py-2 text-sm text-white transition-colors hover:bg-red-400 disabled:opacity-40"
           >
             Stop
           </button>
-         
         </div>
 
-        {/* Progress bar */}
         {scanning && (
-          <div className="mb-6">
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
+          <section className="mb-6">
+            <div className="mb-1 flex justify-between text-xs text-gray-400">
               <span>{currentSymbol}</span>
-              <span>{progress.current}/{progress.total} — {pct}%</span>
+              <span>
+                {progress.current}/{progress.total} — {progressPercent}%
+              </span>
             </div>
-            <div className="w-full bg-gray-200 rounded h-1.5">
+
+            <div className="h-1.5 w-full rounded bg-gray-200">
               <div
-                className="bg-emerald-500 h-1.5 rounded transition-all duration-300"
-                style={{ width: `${pct}%` }}
+                className="h-1.5 rounded bg-emerald-500 transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Summary */}
         {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            {[
-              { label: "Scanned", value: summary.total_scanned },
-              { label: "Signals", value: summary.total_signals },
-              summary.max_gain && { label: "Best gain", value: `${summary.max_gain.symbol} +${summary.max_gain.gain}%` },
-              summary.min_gain && { label: "Min gain",  value: `${summary.min_gain.symbol} +${summary.min_gain.gain}%` },
-            ].filter(Boolean).map((stat: any) => (
-              <div key={stat.label} className="bg-white border border-gray-200 rounded p-3 shadow-sm">
-                <p className="text-xs text-gray-400 uppercase tracking-wider">{stat.label}</p>
-                <p className="text-lg text-gray-900 mt-0.5">{stat.value}</p>
-              </div>
-            ))}
-          </div>
+          <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard label="Scanned" value={summary.total_scanned} />
+            <StatCard label="Signals" value={summary.total_signals} />
+
+            <StatCard
+              label="Best gain"
+              value={
+                summary.max_gain_symbol
+                  ? `${summary.max_gain_symbol} +${numberText(summary.max_gain)}%`
+                  : dash
+              }
+            />
+
+            <StatCard
+              label="Lowest gain"
+              value={
+                summary.min_gain_symbol
+                  ? `${summary.min_gain_symbol} ${numberText(summary.min_gain)}%`
+                  : dash
+              }
+            />
+          </section>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-          {/* Results table */}
-          <div>
-            <h2 className="text-sm uppercase tracking-widest text-gray-800 mb-3">
-              Buy Signals ({results.length})
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <section>
+            <h2 className="mb-3 text-sm uppercase tracking-widest text-gray-800">
+              {scannerMode === "strategy"
+                ? `${selectedStrategy} Signals`
+                : "Buy Signals"}{" "}
+              ({results.length})
             </h2>
+
             {results.length === 0 ? (
-              <p className="text-gray-400 text-sm">No signals yet.</p>
+              <p className="text-sm text-gray-400">No signals yet.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="text-xs text-gray-700 uppercase tracking-wider border-b border-gray-200">
-                      <th className="text-left py-2 pr-4">Symbol</th>
-                      <th className="text-right py-2 pr-4">% Gain</th>
-                      <th className="text-right py-2 pr-4">Close</th>
-                      <th className="text-right py-2 pr-4">Volume</th>
-                      <th className="text-right py-2 pr-4">P/E</th>
-                      <th className="text-right py-2">Sentiment</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((r, i) => {
-                      const sentiment = sentimentLabel(r.sentiment_score);
-                      return (
-                        <tr key={i} className="border-b border-gray-100 hover:bg-gray-100 transition-colors">
-                          <td className="py-2 pr-4 text-gray-900 font-bold">{r.symbol}</td>
-                          <td className="py-2 pr-4 text-right text-emerald-600">+{r.percent_gain}%</td>
-                          <td className="py-2 pr-4 text-right text-gray-700">{r.curr_close}</td>
-                          <td className="py-2 pr-4 text-right text-gray-500">{r.volume?.toLocaleString()}</td>
-                          <td className="py-2 pr-4 text-right text-gray-400">{r.pe_ratio ?? "—"}</td>
-                          <td className={`py-2 text-right ${sentiment.className}`}>{sentiment.text}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {scannerMode === "strategy" ? (
+                  <StrategyTable results={results} />
+                ) : (
+                  <ConditionTable results={results} />
+                )}
               </div>
             )}
-          </div>
+          </section>
 
-          {/* Live log */}
-          <div>
-            <h2 className="text-xs uppercase tracking-widest text-gray-800 mb-3">Live Log</h2>
-            <div className="bg-white border border-gray-200 rounded p-3 h-80 overflow-y-auto text-xs text-gray-500 leading-relaxed shadow-sm">
-              {log.length === 0 && <span className="text-gray-600">Waiting for scan...</span>}
-              {log.map((line, i) => (
+          <section>
+            <h2 className="mb-3 text-xs uppercase tracking-widest text-gray-800">
+              Live Log
+            </h2>
+
+            <div className="h-80 overflow-y-auto rounded border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-500 shadow-sm">
+              {log.length === 0 && (
+                <span className="text-gray-600">Waiting for scan...</span>
+              )}
+
+              {log.map((line, index) => (
                 <div
-                  key={i}
-                  className={line.startsWith("✓") ? "text-emerald-600" : ""}
+                  key={`${line}-${index}`}
+                  className={
+                    line.startsWith("✓") ? "text-emerald-600" : ""
+                  }
                 >
                   {line}
                 </div>
               ))}
-              <div ref={logEndRef} />
             </div>
-          </div>
-
+          </section>
         </div>
-      </div>
+      </main>
+
       <Footer />
     </>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded border border-gray-200 bg-white p-3 shadow-sm">
+      <p className="text-xs uppercase tracking-wider text-gray-400">
+        {label}
+      </p>
+
+      <p className="mt-0.5 text-lg text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+function StrategyTable({ results }: { results: StockResult[] }) {
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="border-b border-gray-200 text-xs uppercase tracking-wider text-gray-700">
+          <th className="py-2 pr-4 text-left">Symbol</th>
+          <th className="py-2 pr-4 text-left">Market Date</th>
+          <th className="py-2 pr-4 text-right">Score</th>
+          <th className="py-2 pr-4 text-left">Setup</th>
+          <th className="py-2 pr-4 text-right">Confidence</th>
+          <th className="py-2 pr-4 text-right">Entry</th>
+          <th className="py-2 pr-4 text-right">Stop Loss</th>
+          <th className="py-2 pr-4 text-right">Target</th>
+          <th className="py-2 text-right">OI Change</th>
+          <th className="py-2 pl-4 text-left">OI Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {results.map((result) => (
+          <tr
+            key={`${result.symbol}-${result.strategy ?? result.market_structure}`}
+            className="border-b border-gray-100 transition-colors hover:bg-gray-100"
+          >
+            <td className="py-2 pr-4 font-bold text-gray-900">
+              {result.symbol}
+            </td>
+
+            <td className="py-2 pr-4 text-xs text-gray-500">
+              {result.market_date ?? dash}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-emerald-600">
+              {result.score ?? dash}
+            </td>
+
+            <td className="py-2 pr-4 text-gray-700">
+              {result.market_structure
+                ? `${result.market_structure} (${result.signal ?? dash})`
+                : result.signal ?? dash}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-gray-700">
+              {result.confidence === undefined
+                ? dash
+                : `${result.confidence}%`}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-gray-700">
+              {numberText(result.entry)}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-red-500">
+              {numberText(result.stoploss)}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-emerald-600">
+              {numberText(result.target)}
+            </td>
+
+            <td className="py-2 text-right text-gray-500">
+              {result.oi_change === null ||
+              result.oi_change === undefined
+                ? dash
+                : `${result.oi_change}%`}
+            </td>
+
+            <td className="py-2 pl-4 text-xs text-gray-500">
+              {result.oi_status ?? dash}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function ConditionTable({ results }: { results: StockResult[] }) {
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="border-b border-gray-200 text-xs uppercase tracking-wider text-gray-700">
+          <th className="py-2 pr-4 text-left">Symbol</th>
+          <th className="py-2 pr-4 text-right">% Gain</th>
+          <th className="py-2 pr-4 text-right">Close</th>
+          <th className="py-2 pr-4 text-right">Volume</th>
+          <th className="py-2 pr-4 text-right">RSI</th>
+          <th className="py-2 text-right">Trend</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {results.map((result) => (
+          <tr
+            key={result.symbol}
+            className="border-b border-gray-100 transition-colors hover:bg-gray-100"
+          >
+            <td className="py-2 pr-4 font-bold text-gray-900">
+              {result.symbol}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-emerald-600">
+              {result.percent_gain === undefined
+                ? dash
+                : `+${result.percent_gain}%`}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-gray-700">
+              {numberText(result.curr_close)}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-gray-500">
+              {result.curr_volume?.toLocaleString() ?? dash}
+            </td>
+
+            <td className="py-2 pr-4 text-right text-gray-500">
+              {numberText(result.rsi)}
+            </td>
+
+            <td className="py-2 text-right text-gray-500">
+              {result.trend ?? dash}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
