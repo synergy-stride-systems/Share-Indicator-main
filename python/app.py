@@ -119,6 +119,11 @@ def run_scan(
 
     scanner = ScannerEngine(symbols)
 
+    # Populate today's delivery/OI archive cache once, sequentially,
+    # before handing symbols to the worker pool. See warm_archives()
+    # docstring for why this matters for scan speed.
+    scanner.market_data.nse.warm_archives()
+
     def progress_callback(current, total, symbol):
         q.put({
             "type": "progress",

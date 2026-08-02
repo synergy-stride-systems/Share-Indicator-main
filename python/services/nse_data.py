@@ -352,6 +352,30 @@ class NSEDataService:
     # DELIVERY % / DELIVERY CHANGE
     # --------------------------------------------------
 
+    def warm_archives(self, as_of_date=None):
+        """
+        Pre-fetch today's CM and F&O bhavcopy archives once, sequentially,
+        before a scan's worker threads start.
+
+        Every symbol scanned on a given day needs the *same* date's
+        archive files, and both are cached by date -- but without this,
+        the first several symbols to reach get_delivery_data /
+        get_oi_data all queue up behind the single-slot NSE semaphore
+        while each independently walks back through lookback days
+        looking for a published file. Doing that walk once up front
+        means worker threads hit a warm cache immediately instead of
+        stalling on the semaphore.
+        """
+        trade_date = _as_trade_date(as_of_date)
+
+        for offset in range(DELIVERY_LOOKBACK_DAYS):
+            if self._delivery_for_date(trade_date - timedelta(days=offset)) is not None:
+                break
+
+        for offset in range(7):
+            if self._fo_bhavcopy_for_date(trade_date - timedelta(days=offset)) is not None:
+                break
+
     def get_delivery_data(self, symbol, as_of_date=None):
         """
         Returns {"delivery_percentage": float|None,

@@ -17,7 +17,7 @@ class ScannerEngine:
     TECHNICAL_STRATEGIES = TechnicalStrategy.SUPPORTED
     ALL_STRATEGIES = POSITIONING_STRATEGIES + TECHNICAL_STRATEGIES
 
-    def __init__(self, symbols, max_workers=3):
+    def __init__(self, symbols, max_workers=30):
         self.symbols = symbols
         self.market_data = MarketDataService()
         self.max_workers = max_workers

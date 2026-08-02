@@ -216,71 +216,105 @@ export default function Dashboard() {
           </h1>
         </div>
 
-        <section className="mb-6 rounded-lg border bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-sm font-bold">
-            Scanner Configuration
-          </h2>
+       
 
-          <div className="flex flex-wrap gap-8">
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="radio"
-                checked={scannerMode === "condition"}
-                onChange={() => setScannerMode("condition")}
-              />
-              Condition Scanner
-            </label>
+          <section className="mb-6 max-w-full rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+  <div className="mb-4">
+    <h2 className="text-lg font-semibold text-gray-900">
+      ⚙ Scanner Configuration
+    </h2>
 
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="radio"
-                checked={scannerMode === "strategy"}
-                onChange={() => setScannerMode("strategy")}
-              />
-              Strategy Scanner
-            </label>
-          </div>
+    <p className="mt-1 text-xs text-gray-500">
+      Configure your scanner before starting.
+    </p>
+  </div>
 
-          {scannerMode === "strategy" && (
-            <div className="mt-5 flex flex-wrap gap-4">
-              <select
-                className="rounded border px-3 py-2"
-                value={selectedStrategy}
-                onChange={(event) =>
-                  setSelectedStrategy(event.target.value)
-                }
-              >
-                <option>All Strategies</option>
-                <option>Short Covering</option>
-                <option>Long Build-up</option>
-                <option>Short Build-up</option>
-                <option>Long Unwinding</option>
-                <option>Breakout with Volume</option>
-                <option>Breakdown with Volume</option>
-                <option>VWAP Momentum</option>
-                <option>EMA 20/50 Crossover</option>
-                <option>RSI Reversal</option>
-                <option>Bollinger Band Breakout</option>
-              </select>
+  {/* Scanner Mode */}
 
-              <label className="flex items-center gap-2 text-sm">
-                Minimum score
+  <div className="mb-4 flex flex-row gap-2">
+    <div>
+    <label className="mb-2 block text-sm font-medium text-gray-700">
+      Scan Mode
+    </label>
 
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={minimumScore}
-                  onChange={(event) =>
-                    setMinimumScore(Number(event.target.value))
-                  }
-                  className="w-24 rounded border px-3 py-2"
-                />
-              </label>
-            </div>
-          )}
-        </section>
+    <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
+      <button
+        onClick={() => setScannerMode("strategy")}
+        className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
+          scannerMode === "strategy"
+            ? "bg-white text-blue-600 shadow-sm"
+            : "text-gray-600 hover:text-gray-900"
+        }`}
+      >
+        Strategy
+      </button>
 
+      <button
+        onClick={() => setScannerMode("condition")}
+        className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
+          scannerMode === "condition"
+            ? "bg-white text-blue-600 shadow-sm"
+            : "text-gray-600 hover:text-gray-900"
+        }`}
+      >
+        Condition
+      </button>
+    </div>
+  </div>
+  </div>
+
+  {/* Strategy Options */}
+  <div>
+
+  {scannerMode === "strategy" && (
+    <>
+      <div className="mb-4">
+        <label className="mb-2 block text-sm font-medium text-gray-700">
+          Strategy
+        </label>
+
+        <select
+          value={selectedStrategy}
+          onChange={(e) => setSelectedStrategy(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        >
+          <option>All Strategies</option>
+          <option>Short Covering</option>
+          <option>Long Build-up</option>
+          <option>Short Build-up</option>
+          <option>Long Unwinding</option>
+          <option>Breakout with Volume</option>
+          <option>Breakdown with Volume</option>
+          <option>VWAP Momentum</option>
+          <option>EMA 20/50 Crossover</option>
+          <option>RSI Reversal</option>
+          <option>Bollinger Band Breakout</option>
+        </select>
+      </div>
+
+      <div className="mb-5 flex items-center justify-between">
+        <label className="text-sm font-medium text-gray-700">
+          Minimum Score
+        </label>
+
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={minimumScore}
+          onChange={(e) => setMinimumScore(Number(e.target.value))}
+          className="h-8 w-12 rounded-md border border-gray-300 text-center text-sm font-medium focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        />
+      </div>
+    
+    </>
+  )}
+  </div>
+
+  
+</section>
+
+ 
         <div className="mb-6 flex gap-3">
           <button
             onClick={startScan}
