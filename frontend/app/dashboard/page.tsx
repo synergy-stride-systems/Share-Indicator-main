@@ -183,10 +183,18 @@ export default function Dashboard() {
       };
 
       eventSource.onerror = () => {
+  console.warn("SSE connection interrupted");
+
+  // Don't immediately stop scanning.
+  // The browser will try to reconnect automatically.
+
+  addLog("Reconnecting to scanner...");
+};
+      {/*eventSource.onerror = () => {
         setScanning(false);
         eventSource.close();
         addLog("Scanner connection lost.");
-      };
+      };*/}
     } catch (error) {
       console.error(error);
       setScanning(false);

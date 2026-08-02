@@ -22,6 +22,7 @@ CORS(
         r"/*": {
             "origins": [
                 "http://localhost:3000",
+                "https://share-indicator-main.vercel.app",
                 "https://synergyapp-frontend-f9bxarh2ehbycuhh.canadacentral-01.azurewebsites.net",
             ]
         }
