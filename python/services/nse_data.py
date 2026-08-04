@@ -45,6 +45,7 @@ CAVEATS (please read before deploying):
   network allowlist). Treat it as a strong first draft.
 """
 
+import os
 import time
 import threading
 from io import BytesIO
@@ -140,57 +141,40 @@ class NSEDataService:
     # CURRENT F&O STOCK UNIVERSE
     # --------------------------------------------------
 
+    import os
+
     def get_fno_symbols(self):
-        """Load NSE's current stock-derivatives universe as .NS tickers."""
         today = datetime.today().date()
-        with self._archive_lock:
-            if (
-                self._fno_symbols_cache is not None
-                and self._fno_symbols_cache_date == today
-            ):
-                return self._fno_symbols_cache
 
-            self._warm_up()
-            with self._nse_semaphore:
-                try:
-                    response = self._session.get(FNO_MARKET_LOTS_URL, timeout=15)
-                    print("Status:", response.status_code)
-                    print("URL:", response.url)
-                    print(response.text[:500])
-                except Exception as error:
-                    print(f"NSE F&O universe request error: {error}")
-                    return []
+        if (
+            self._fno_symbols_cache is not None
+            and self._fno_symbols_cache_date == today
+        ):
+            return self._fno_symbols_cache
 
-            if response.status_code != 200:
-                print(f"NSE F&O universe request failed: HTTP {response.status_code}")
-                return []
+        file_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+            "fno_list.txt"
+        )
 
-            try:
-                print(response.headers.get("Content-Type"))
-                frame = pd.read_csv(BytesIO(response.content))
-            except Exception as error:
-                print(f"Could not parse NSE F&O market-lot file: {error}")
-                return []
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                symbols = [
+                    line.strip().upper()
+                    for line in f
+                    if line.strip()
+             ]
 
-            symbol_column = self._column(
-                frame, "SYMBOL", "UNDERLYING", "UNDERLYING_SYMBOL"
-            )
-            if symbol_column is None:
-                print("NSE F&O market-lot file has no symbol column")
-                return []
-
-            index_symbols = {
-                "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50"
-            }
-            symbols = sorted({
-                f"{str(symbol).strip().upper()}.NS"
-                for symbol in symbol_column.dropna()
-                if str(symbol).strip()
-                and str(symbol).strip().upper() not in index_symbols
-            })
             self._fno_symbols_cache = symbols
             self._fno_symbols_cache_date = today
+
             return symbols
+
+        except Exception as e:
+            print(f"Unable to load fno_list.txt: {e}")
+            return []
+    
+    
 
     # --------------------------------------------------
     # SESSION / COOKIE HANDLING
