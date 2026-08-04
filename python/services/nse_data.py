@@ -154,6 +154,9 @@ class NSEDataService:
             with self._nse_semaphore:
                 try:
                     response = self._session.get(FNO_MARKET_LOTS_URL, timeout=15)
+                    print("Status:", response.status_code)
+                    print("URL:", response.url)
+                    print(response.text[:500])
                 except Exception as error:
                     print(f"NSE F&O universe request error: {error}")
                     return []
@@ -163,6 +166,7 @@ class NSEDataService:
                 return []
 
             try:
+                print(response.headers.get("Content-Type"))
                 frame = pd.read_csv(BytesIO(response.content))
             except Exception as error:
                 print(f"Could not parse NSE F&O market-lot file: {error}")
